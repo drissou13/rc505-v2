@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en" >
+<head>
+  <meta charset="UTF-8">
+  <title>rc-505 V2</title>
+  
+
+</head>
+<body>
+<!-- partial:index.partial.html -->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RC-505 Looper</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #222;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            padding: 20px;
+        }
+        #screen {
+            background: black;
+            color: lime;
+            font-size: 18px;
+            padding: 10px;
+            width: 80%;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 8px;
+            border: 2px solid lime;
+            margin-bottom: 10px;
+        }
+        #controls {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        .btn {
+            padding: 10px 15px;
+            font-size: 16px;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+        #start-stop { background: red; color: white; }
+        #undo, #redo { background: gray; color: white; }
+        #play-all { background: yellow; color: black; }
+        #tap-tempo { background: blue; color: white; }
+        #download-multi { background: purple; color: white; }
+        .btn:hover { opacity: 0.8; }
+        #looper {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .track {
+            background: #333;
+            padding: 15px;
+            border-radius: 10px;
+            width: 220px;
+            transition: box-shadow 0.5s ease-in-out;
+        }
+        .track.recording { animation: pulse-red 1s infinite alternate; }
+        .track.playing { animation: pulse-green 1s infinite alternate; }
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 15px 5px rgba(255, 0, 0, 0.8); }
+            100% { box-shadow: 0 0 25px 10px rgba(255, 0, 0, 0.6); }
+        }
+        @keyframes pulse-green {
+            0% { box-shadow: 0 0 15px 5px rgba(0, 255, 0, 0.8); }
+            100% { box-shadow: 0 0 25px 10px rgba(0, 255, 0, 0.6); }
+        }
+    </style>
+</head>
+<body>
+    <div id="screen">🎤 RC-505 Looper prêt</div>
+    <div id="controls">
+        <button id="start-stop" class="btn">⏯ Start/Stop</button>
+        <button id="undo" class="btn">↩ Undo</button>
+        <button id="redo" class="btn">↪ Redo</button>
+        <button id="play-all" class="btn">▶️ Play All</button>
+        <button id="tap-tempo" class="btn">⏲ Tap Tempo</button>
+    </div>
+    <div id="looper"></div>
+    <button id="download-multi" class="btn">📥 Télécharger Multipiste</button>
+
+    <script>
+        let isPlaying = false;
+        let tempo = 120;
+
+        function updateScreen(text) {
+            document.getElementById("screen").innerText = text;
+        }
+
+        class Track {
+            constructor(id) {
+                this.id = id;
+                this.audioChunks = [];
+                this.mediaRecorder = null;
+                this.audio = new Audio();
+                this.audio.loop = true; // 🔁 Lecture en boucle
+                this.history = [];
+                this.isRecording = false;
+                this.createTrackUI();
+            }
+
+            createTrackUI() {
+                const trackDiv = document.createElement('div');
+                trackDiv.classList.add('track');
+                trackDiv.innerHTML = `
+                    <div class="controls">
+                        <button class="rec" onclick="tracks[${this.id}].startRecording()">🔴 Rec</button>
+                        <button class="stop" onclick="tracks[${this.id}].stopRecording()">⏹ Stop</button>
+                        <button class="play" onclick="tracks[${this.id}].playTrack()">▶️ Play</button>
+                        <button class="clear" onclick="tracks[${this.id}].clearTrack()">🗑 Clear</button>
+                    </div>
+                `;
+                document.getElementById('looper').appendChild(trackDiv);
+            }
+
+            async startRecording() {
+                if (this.isRecording) return;
+                this.isRecording = true;
+                this.audioChunks = [];
+                updateScreen(`🎤 Enregistrement Piste ${this.id + 1}...`);
+
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    this.mediaRecorder = new MediaRecorder(stream);
+                    this.mediaRecorder.ondataavailable = event => this.audioChunks.push(event.data);
+                    this.mediaRecorder.onstop = () => {
+                        const audioBlob = new Blob(this.audioChunks, { type: 'audio/wav' });
+                        this.history.push(audioBlob);
+                        this.audio.src = URL.createObjectURL(audioBlob);
+                    };
+                    this.mediaRecorder.start();
+                    document.querySelectorAll('.track')[this.id].classList.add('recording');
+                } catch (err) {
+                    alert("Accès au micro refusé !");
+                }
+            }
+
+            stopRecording() {
+                if (this.mediaRecorder && this.isRecording) {
+                    this.isRecording = false;
+                    this.mediaRecorder.stop();
+                    document.querySelectorAll('.track')[this.id].classList.remove('recording');
+                    updateScreen("⏹ Enregistrement arrêté");
+                }
+            }
+
+            playTrack() {
+                if (this.audio.src) {
+                    this.audio.play();
+                    document.querySelectorAll('.track')[this.id].classList.add('playing');
+                    updateScreen(`▶️ Lecture Piste ${this.id + 1}`);
+                }
+            }
+
+            clearTrack() {
+                this.audio.src = '';
+                this.history = [];
+                document.querySelectorAll('.track')[this.id].classList.remove('playing');
+                updateScreen("🗑 Piste effacée");
+            }
+        }
+
+        const tracks = Array.from({ length: 5 }, (_, i) => new Track(i));
+
+        document.getElementById("play-all").addEventListener("click", () => {
+            tracks.forEach(track => track.playTrack());
+            updateScreen("▶️ Lecture de toutes les pistes en boucle");
+        });
+
+        document.getElementById("start-stop").addEventListener("click", () => {
+            isPlaying = !isPlaying;
+            if (isPlaying) {
+                tracks.forEach(track => track.playTrack());
+                updateScreen("🎵 Lecture en boucle");
+            } else {
+                tracks.forEach(track => track.audio.pause());
+                updateScreen("⏹ Arrêt");
+            }
+        });
+
+        async function downloadMultiTrack() {
+            const zip = new JSZip();
+            tracks.forEach((track, i) => {
+                if (track.history.length > 0) {
+                    zip.file(`track_${i + 1}.wav`, track.history[track.history.length - 1]);
+                }
+            });
+            zip.generateAsync({ type: "blob" }).then(content => {
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(content);
+                link.download = "Multitrack_Looper.zip";
+                link.click();
+            });
+        }
+
+        document.getElementById("download-multi").addEventListener("click", downloadMultiTrack);
+    </script>
+</body>
+</html>
+<!-- partial -->
+  
+</body>
+</html>
